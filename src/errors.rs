@@ -3,8 +3,8 @@
 //! Translates tabby's `Error` enum into appropriate Python exception
 //! types so that DB-API consumers get meaningful error classes.
 
+use claw::error::Error as TdsError;
 use pyo3::prelude::*;
-use tabby::error::Error as TdsError;
 
 /// Convert a tabby TDS error into a Python exception.
 ///

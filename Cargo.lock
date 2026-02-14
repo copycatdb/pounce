@@ -459,6 +459,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "claw"
+version = "0.1.0"
+source = "git+https://github.com/copycatdb/claw.git?branch=main#817413ba7901cc4beca6810c14784d30a5a4b46b"
+dependencies = [
+ "tabby",
+ "uuid",
+]
+
+[[package]]
 name = "cmake"
 version = "0.1.57"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -981,11 +990,11 @@ version = "0.1.0"
 dependencies = [
  "arrow",
  "chrono",
+ "claw",
  "futures-util",
  "once_cell",
  "pyo3",
  "rust_decimal",
- "tabby",
  "tokio",
  "tokio-util",
  "uuid",
@@ -1483,7 +1492,7 @@ dependencies = [
 [[package]]
 name = "tabby"
 version = "0.1.0"
-source = "git+https://github.com/copycatdb/tabby.git?branch=main#b37957f52ab524dbdb65ed9c0b980719a627ad17"
+source = "git+https://github.com/copycatdb/tabby.git?branch=main#6aec99d1b1fc804c09c934364fc016b6836d82a9"
 dependencies = [
  "async-trait",
  "asynchronous-codec",

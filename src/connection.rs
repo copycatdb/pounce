@@ -5,9 +5,9 @@
 
 use crate::errors::to_pyerr;
 use crate::runtime;
+use claw::{AuthMethod, Client, Config, EncryptionLevel};
 use pyo3::prelude::*;
 use std::sync::{Arc, Mutex};
-use tabby::{AuthMethod, Client, Config, EncryptionLevel};
 use tokio::net::TcpStream;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 

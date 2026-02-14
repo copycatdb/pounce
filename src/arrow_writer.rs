@@ -5,7 +5,7 @@
 
 use arrow::array::*;
 use arrow::datatypes::Field;
-use tabby::row_writer::RowWriter;
+use claw::row_writer::RowWriter;
 
 use crate::types::column_to_field;
 
@@ -18,7 +18,7 @@ pub struct ArrowRowWriter {
 
 impl ArrowRowWriter {
     /// Create a new writer from TDS column metadata.
-    pub fn from_columns(columns: &[tabby::Column], capacity: usize) -> Self {
+    pub fn from_columns(columns: &[claw::Column], capacity: usize) -> Self {
         let fields: Vec<Field> = columns.iter().map(column_to_field).collect();
         let builders: Vec<Box<dyn ArrayBuilder>> = fields
             .iter()

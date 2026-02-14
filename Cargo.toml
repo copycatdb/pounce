@@ -12,12 +12,12 @@ crate-type = ["cdylib"]
 
 [features]
 default = ["rustls", "chrono", "rust_decimal"]
-rustls = ["tabby/rustls"]
-chrono = ["tabby/chrono"]
-rust_decimal = ["tabby/rust_decimal"]
+rustls = ["claw/rustls"]
+chrono = ["claw/chrono"]
+rust_decimal = ["claw/rust_decimal"]
 
 [dependencies]
-tabby = { git = "https://github.com/copycatdb/tabby.git", branch = "main" }
+claw = { git = "https://github.com/copycatdb/claw.git", branch = "main" }
 pyo3 = { version = "0.28", features = ["extension-module"] }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "sync", "macros"] }
 tokio-util = { version = "0.7", features = ["compat"] }

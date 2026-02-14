@@ -4,7 +4,7 @@
 //! This determines the schema of every Arrow table pounce produces.
 
 use arrow::datatypes::{DataType, Field, TimeUnit};
-use tabby::{Column, DataType as TdsDataType, FixedLenType, VarLenType};
+use claw::{Column, DataType as TdsDataType, FixedLenType, VarLenType};
 
 /// Map a TDS column descriptor to an Arrow DataType + nullable flag.
 ///

@@ -8,7 +8,7 @@ use arrow::array::*;
 use arrow::datatypes::*;
 use arrow::record_batch::RecordBatch;
 use chrono::NaiveDate;
-use tabby::SqlValue;
+use claw::SqlValue;
 
 /// Append a single TDS value to the matching Arrow array builder.
 ///
@@ -237,7 +237,7 @@ pub fn append_column_data(builder: &mut Box<dyn ArrayBuilder>, data: &SqlValue<'
     }
 }
 
-fn datetime2_to_micros(dt: &tabby::temporal::DateTime2) -> i64 {
+fn datetime2_to_micros(dt: &claw::temporal::DateTime2) -> i64 {
     let base = NaiveDate::from_ymd_opt(1, 1, 1).unwrap();
     let date = base + chrono::Duration::days(dt.date().days() as i64);
     let t = dt.time();

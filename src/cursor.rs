@@ -11,9 +11,9 @@ use arrow::array::{Array, ArrayBuilder, StructArray};
 use arrow::datatypes::Field;
 use arrow::ffi::{FFI_ArrowArray, FFI_ArrowSchema, to_ffi};
 use arrow::record_batch::RecordBatch;
+use claw::{ResultItem, Row as TdsRow, SqlValue};
 use futures_util::TryStreamExt;
 use pyo3::prelude::*;
-use tabby::{ResultItem, Row as TdsRow, SqlValue};
 
 use crate::arrow_convert::{append_column_data, finish_builders, make_builder};
 use crate::arrow_writer::ArrowRowWriter;
@@ -52,7 +52,7 @@ pub fn execute_to_arrow(
         py.detach(|| {
             runtime::block_on(async {
                 let mut c = client.lock().unwrap();
-                let empty_params: &[&dyn tabby::IntoSql] = &[];
+                let empty_params: &[&dyn claw::IntoSql] = &[];
                 let mut stream = c.execute(sql, empty_params).await.map_err(to_pyerr)?;
 
                 let mut fields: Option<Vec<Field>> = None;
@@ -164,7 +164,7 @@ pub fn execute_to_rows(
         py.detach(|| {
             runtime::block_on(async {
                 let mut c = client.lock().unwrap();
-                let empty_params: &[&dyn tabby::IntoSql] = &[];
+                let empty_params: &[&dyn claw::IntoSql] = &[];
                 let mut stream = c.execute(sql, empty_params).await.map_err(to_pyerr)?;
 
                 let mut columns: Vec<ColumnInfo> = Vec::new();
@@ -212,7 +212,7 @@ pub fn execute_to_arrow_direct(
         py.detach(|| {
             runtime::block_on(async {
                 let mut c = client.lock().unwrap();
-                let empty_params: &[&dyn tabby::IntoSql] = &[];
+                let empty_params: &[&dyn claw::IntoSql] = &[];
                 let intermediate_batches: std::cell::RefCell<Vec<RecordBatch>> =
                     std::cell::RefCell::new(Vec::new());
                 let mut fields_out: Option<Vec<Field>> = None;
