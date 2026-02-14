@@ -7,7 +7,7 @@ Pounce speaks TDS natively via [tabby](https://github.com/copycatdb/tabby) and r
 ## Quick Start
 
 ```python
-from adbc_driver_mssql import dbapi
+from pounce import dbapi
 
 conn = dbapi.connect("Server=localhost,1433;UID=sa;PWD=secret;TrustServerCertificate=yes")
 cur = conn.cursor()
@@ -157,7 +157,7 @@ No ODBC driver manager. No C++ bindings. Just Rust talking TDS and handing Arrow
 ## Installation
 
 ```bash
-pip install adbc-driver-mssql
+pip install copycatdb-pounce
 ```
 
 ## Part of CopyCat 🐱

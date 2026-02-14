@@ -3,15 +3,30 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "adbc_driver_mssql"
+name = "copycatdb-pounce"
 version = "0.1.0"
+description = "Arrow-native SQL Server driver for Python. Zero-copy. Wickedly fast."
 requires-python = ">=3.9"
 dependencies = ["pyarrow>=12.0"]
+license = "MIT"
+keywords = ["sql-server", "arrow", "adbc", "database", "tds"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "Topic :: Database",
+]
+
+[project.urls]
+Homepage = "https://github.com/copycatdb/pounce"
+Repository = "https://github.com/copycatdb/pounce"
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
 python-source = "python"
-module-name = "adbc_driver_mssql._native"
+module-name = "pounce._native"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

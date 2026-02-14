@@ -1,7 +1,7 @@
 """DB-API 2.0 compatible interface for SQL Server via Arrow-native transport.
 
 Usage:
-    import adbc_driver_mssql.dbapi as mssql
+    import pounce.dbapi as mssql
     conn = mssql.connect("Server=localhost,1433;UID=sa;PWD=pass;TrustServerCertificate=yes")
     cur = conn.cursor()
     cur.execute("SELECT * FROM my_table")
@@ -9,7 +9,7 @@ Usage:
     rows = cur.fetchall()            # DB-API tuples
 """
 import pyarrow as pa
-from adbc_driver_mssql._native import NativeConnection
+from pounce._native import NativeConnection
 
 # DB-API 2.0 globals
 apilevel = "2.0"

@@ -1,4 +1,4 @@
-"""Tests for adbc_driver_mssql"""
+"""Tests for pounce"""
 import pytest
 import pyarrow as pa
 import time
@@ -8,7 +8,7 @@ CONN_STR = "Server=localhost,1433;UID=sa;PWD=TestPass123!;TrustServerCertificate
 
 @pytest.fixture
 def conn():
-    import adbc_driver_mssql.dbapi as mssql
+    import pounce.dbapi as mssql
     c = mssql.connect(CONN_STR)
     c.autocommit = True
     yield c
@@ -24,7 +24,7 @@ def cursor(conn):
 
 class TestConnection:
     def test_connect(self):
-        import adbc_driver_mssql.dbapi as mssql
+        import pounce.dbapi as mssql
         conn = mssql.connect(CONN_STR)
         assert conn is not None
         conn.close()
