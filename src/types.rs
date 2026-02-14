@@ -1,5 +1,5 @@
-use crate::tabby::{Column, TypeInfo, VarLenType, FixedLenType};
 use arrow::datatypes::{DataType, Field, TimeUnit};
+use tabby::{Column, DataType as TdsDataType, FixedLenType, VarLenType};
 
 /// Map a TDS Column to an Arrow DataType + nullable
 pub fn column_to_arrow_type(col: &Column) -> (DataType, bool) {
@@ -11,9 +11,9 @@ pub fn column_to_arrow_type(col: &Column) -> (DataType, bool) {
     (dt, nullable)
 }
 
-fn type_info_to_arrow(ti: &TypeInfo) -> DataType {
+fn type_info_to_arrow(ti: &TdsDataType) -> DataType {
     match ti {
-        TypeInfo::FixedLen(ft) => match ft {
+        TdsDataType::FixedLen(ft) => match ft {
             FixedLenType::Null => DataType::Null,
             FixedLenType::Bit => DataType::Boolean,
             FixedLenType::Int1 => DataType::UInt8,
@@ -25,11 +25,9 @@ fn type_info_to_arrow(ti: &TypeInfo) -> DataType {
             FixedLenType::Datetime | FixedLenType::Datetime4 => {
                 DataType::Timestamp(TimeUnit::Microsecond, None)
             }
-            FixedLenType::Money | FixedLenType::Money4 => {
-                DataType::Decimal128(19, 4)
-            }
+            FixedLenType::Money | FixedLenType::Money4 => DataType::Decimal128(19, 4),
         },
-        TypeInfo::VarLenSized(ctx) => match ctx.r#type() {
+        TdsDataType::VarLenSized(ctx) => match ctx.r#type() {
             VarLenType::Bitn => DataType::Boolean,
             VarLenType::Intn => match ctx.len() {
                 1 => DataType::UInt8,
@@ -42,8 +40,12 @@ fn type_info_to_arrow(ti: &TypeInfo) -> DataType {
                 _ => DataType::Float64,
             },
             VarLenType::Guid => DataType::Utf8, // UUID as string
-            VarLenType::NVarchar | VarLenType::NChar | VarLenType::BigVarChar
-            | VarLenType::BigChar | VarLenType::Text | VarLenType::NText => DataType::Utf8,
+            VarLenType::NVarchar
+            | VarLenType::NChar
+            | VarLenType::BigVarChar
+            | VarLenType::BigChar
+            | VarLenType::Text
+            | VarLenType::NText => DataType::Utf8,
             VarLenType::BigVarBin | VarLenType::BigBinary | VarLenType::Image => DataType::Binary,
             VarLenType::Datetimen => DataType::Timestamp(TimeUnit::Microsecond, None),
             VarLenType::Daten => DataType::Date32,
@@ -56,10 +58,10 @@ fn type_info_to_arrow(ti: &TypeInfo) -> DataType {
             VarLenType::Xml => DataType::Utf8,
             _ => DataType::Utf8,
         },
-        TypeInfo::VarLenSizedPrecision { precision, scale, .. } => {
-            DataType::Decimal128(*precision, *scale as i8)
-        }
-        TypeInfo::Xml { .. } => DataType::Utf8,
+        TdsDataType::VarLenSizedPrecision {
+            precision, scale, ..
+        } => DataType::Decimal128(*precision, *scale as i8),
+        TdsDataType::Xml { .. } => DataType::Utf8,
     }
 }
 
