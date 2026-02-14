@@ -218,7 +218,7 @@ pub fn execute_to_arrow_direct(
                 let mut fields_out: Option<Vec<Field>> = None;
                 let batch_size_copy = batch_size;
 
-                let writer_opt: Option<ArrowRowWriter> = (&mut *c)
+                let writer_opt: Option<ArrowRowWriter> = (*c)
                     .query_direct(
                         sql,
                         empty_params,
@@ -229,10 +229,10 @@ pub fn execute_to_arrow_direct(
                         },
                         |w: &mut ArrowRowWriter| {
                             w.finish_row();
-                            if w.row_count() >= batch_size_copy {
-                                if let Ok(batch) = w.flush(batch_size_copy) {
-                                    intermediate_batches.borrow_mut().push(batch);
-                                }
+                            if w.row_count() >= batch_size_copy
+                                && let Ok(batch) = w.flush(batch_size_copy)
+                            {
+                                intermediate_batches.borrow_mut().push(batch);
                             }
                             true
                         },
@@ -243,13 +243,13 @@ pub fn execute_to_arrow_direct(
                 let mut batches = intermediate_batches.into_inner();
 
                 // Flush final batch
-                if let Some(mut w) = writer_opt {
-                    if w.row_count() > 0 {
-                        let batch = w.finish_batch().map_err(|e| {
-                            pyo3::exceptions::PyRuntimeError::new_err(e.to_string())
-                        })?;
-                        batches.push(batch);
-                    }
+                if let Some(mut w) = writer_opt
+                    && w.row_count() > 0
+                {
+                    let batch = w
+                        .finish_batch()
+                        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+                    batches.push(batch);
                 }
 
                 drop(c);
