@@ -1,3 +1,8 @@
+//! TDS connection management.
+//!
+//! Wraps a tabby `Client` with connection-string parsing, transaction
+//! state tracking, and autocommit semantics.
+
 use crate::errors::to_pyerr;
 use crate::runtime;
 use pyo3::prelude::*;
@@ -6,14 +11,32 @@ use tabby::{AuthMethod, Client, Config, EncryptionLevel};
 use tokio::net::TcpStream;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
+/// Thread-safe handle to a tabby TDS client.
 pub type SharedClient = Arc<Mutex<Client<Compat<TcpStream>>>>;
 
+/// Owns the TDS session and tracks transaction state.
+///
+/// This is the Rust-side companion to the Python `Connection` class.
+/// It manages the lifecycle of `BEGIN`/`COMMIT`/`ROLLBACK` when
+/// autocommit is off, and provides `SharedClient` handles for
+/// cursor operations.
 pub struct TdsConnection {
+    /// The underlying tabby client, or `None` if closed.
     pub client: Option<SharedClient>,
+    /// When `true`, each statement commits immediately.
     pub autocommit: bool,
+    /// Tracks whether we've sent `BEGIN TRANSACTION`.
     pub in_transaction: bool,
 }
 
+/// Parse an ADO-style connection string into components.
+///
+/// Supported keys (case-insensitive):
+/// - `Server=host,port` — host and optional port (default 1433)
+/// - `UID` / `User ID` — SQL login username
+/// - `PWD` / `Password` — SQL login password
+/// - `Database` / `Initial Catalog` — initial database (default master)
+/// - `TrustServerCertificate` — skip TLS cert validation (yes/true/1)
 fn parse_connection_string(conn_str: &str) -> (String, u16, String, String, String, bool) {
     let mut host = "localhost".to_string();
     let mut port: u16 = 1433;
@@ -58,6 +81,7 @@ fn parse_connection_string(conn_str: &str) -> (String, u16, String, String, Stri
 
 #[allow(clippy::await_holding_lock)]
 impl TdsConnection {
+    /// Connect to SQL Server by parsing an ADO-style connection string.
     pub fn new(connection_str: &str) -> PyResult<Self> {
         let (host, port, database, uid, pwd, trust_cert) = parse_connection_string(connection_str);
 

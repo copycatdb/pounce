@@ -1,11 +1,20 @@
+//! Arrow type conversion: TDS wire data → Arrow columnar arrays.
+//!
+//! Each `SqlValue` variant from tabby maps to an Arrow `ArrayBuilder`.
+//! This module handles the per-cell append logic — the hot path that
+//! determines how fast we can stream TDS rows into Arrow batches.
+
 use arrow::array::*;
 use arrow::datatypes::*;
 use arrow::record_batch::RecordBatch;
 use chrono::NaiveDate;
 use tabby::SqlValue;
 
-/// Append a single SqlValue value to the appropriate Arrow array builder.
-/// The builder type must match the Arrow DataType from types.rs.
+/// Append a single TDS value to the matching Arrow array builder.
+///
+/// The builder type must match the `DataType` returned by
+/// [`types::column_to_arrow_type`]. Panics (via `unwrap`) if there's
+/// a type mismatch — that's a bug in our type mapping, not user error.
 pub fn append_column_data(builder: &mut Box<dyn ArrayBuilder>, data: &SqlValue<'_>) {
     match data {
         // Boolean

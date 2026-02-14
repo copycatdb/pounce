@@ -1,3 +1,12 @@
+//! Query execution: SQL → Arrow RecordBatches.
+//!
+//! This is the core of pounce's data path. `execute_to_arrow` sends SQL
+//! through tabby, streams the TDS result rows, and builds Arrow
+//! `RecordBatch`es directly — no intermediate Python objects.
+//!
+//! Also provides `execute_to_rows` for the (slower) DB-API tuple path
+//! and helpers to transfer Arrow batches to Python via FFI.
+
 use arrow::array::{Array, ArrayBuilder, StructArray};
 use arrow::datatypes::Field;
 use arrow::ffi::{FFI_ArrowArray, FFI_ArrowSchema, to_ffi};
@@ -12,20 +21,23 @@ use crate::errors::to_pyerr;
 use crate::runtime;
 use crate::types::column_to_field;
 
-/// Result of executing a query — either Arrow batches or rowcount for DML
+/// Result of executing a query — either Arrow batches or a DML row count.
 pub enum ExecResult {
-    /// Query with results: fields + batches of RecordBatch
+    /// SELECT / OUTPUT — column metadata + Arrow record batches.
     Query {
         #[allow(dead_code)]
         fields: Vec<Field>,
         batches: Vec<RecordBatch>,
     },
-    /// DML with no results
+    /// INSERT / UPDATE / DELETE / DDL — just the affected row count.
     Dml { rowcount: i64 },
 }
 
 /// Execute SQL and stream results directly into Arrow RecordBatches.
-/// No intermediate Python objects — TDS wire → Arrow columnar buffers.
+///
+/// This is the hot path: TDS wire → column builders → RecordBatch.
+/// No Python objects are created until the Arrow table crosses the
+/// FFI boundary.
 #[allow(clippy::await_holding_lock)]
 pub fn execute_to_arrow(
     client: &SharedClient,

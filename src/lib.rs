@@ -1,3 +1,18 @@
+//! # pounce — Arrow-native SQL Server driver
+//!
+//! PyO3 extension module that bridges Python ↔ tabby (Rust TDS) ↔ Arrow.
+//!
+//! ```text
+//! Python (PyArrow)  →  pounce (this crate)  →  tabby (TDS 7.4+)  →  SQL Server
+//!                         ↕ Arrow FFI
+//!                      zero-copy
+//! ```
+//!
+//! The main entry point is [`NativeConnection`], exposed to Python as
+//! `pounce._native.NativeConnection`. The Python DB-API layer in
+//! `pounce/dbapi.py` wraps it with cursor semantics, context managers,
+//! and lazy row materialisation.
+
 #![allow(unexpected_cfgs)]
 
 use pyo3::prelude::*;
@@ -13,6 +28,15 @@ mod types;
 
 use connection::TdsConnection;
 
+/// Native SQL Server connection, exposed to Python via PyO3.
+///
+/// Holds a tabby `Client<TcpStream>` behind a `Mutex`. All SQL execution
+/// flows through this struct; the Python-side `Connection` and `Cursor`
+/// classes in `dbapi.py` delegate here.
+///
+/// Thread safety: the `Mutex` allows sharing across Python threads, but
+/// only one operation runs at a time (no concurrent queries on a single
+/// TDS session — that's a protocol constraint, not a limitation).
 #[pyclass]
 pub struct NativeConnection {
     inner: Arc<Mutex<TdsConnection>>,
@@ -20,6 +44,10 @@ pub struct NativeConnection {
 
 #[pymethods]
 impl NativeConnection {
+    /// Open a new TDS connection.
+    ///
+    /// Parses an ADO-style connection string and establishes a TCP+TLS
+    /// session to SQL Server via tabby.
     #[new]
     fn new(connection_str: &str) -> PyResult<Self> {
         let conn = TdsConnection::new(connection_str)?;
@@ -28,18 +56,25 @@ impl NativeConnection {
         })
     }
 
+    /// Close the connection and drop the TDS session.
     fn close(&self) -> PyResult<()> {
         self.inner.lock().unwrap().close()
     }
 
+    /// Commit the current transaction (sends `COMMIT TRANSACTION`).
     fn commit(&self) -> PyResult<()> {
         self.inner.lock().unwrap().commit()
     }
 
+    /// Roll back the current transaction (sends `ROLLBACK TRANSACTION`).
     fn rollback(&self) -> PyResult<()> {
         self.inner.lock().unwrap().rollback()
     }
 
+    /// Enable or disable autocommit mode.
+    ///
+    /// When switching from manual → autocommit while a transaction is
+    /// active, the pending transaction is committed first.
     fn set_autocommit(&self, value: bool) -> PyResult<()> {
         let mut conn = self.inner.lock().unwrap();
         if value && conn.in_transaction {
@@ -52,12 +87,20 @@ impl NativeConnection {
         Ok(())
     }
 
+    /// Returns `True` if autocommit is on.
     fn get_autocommit(&self) -> bool {
         self.inner.lock().unwrap().autocommit
     }
 
-    /// Execute SQL and return results as Arrow RecordBatches (zero-copy via FFI).
-    /// Returns a list of PyArrow RecordBatch objects.
+    /// Execute SQL and return results as a PyArrow Table (zero-copy FFI).
+    ///
+    /// This is the primary query path. TDS row data is decoded directly
+    /// into Arrow columnar arrays in Rust, then transferred to Python via
+    /// Arrow C Data Interface — no intermediate Python objects.
+    ///
+    /// Returns:
+    /// - `pyarrow.Table` for queries with results (SELECT, OUTPUT, etc.)
+    /// - `int` (row count) for DML without results (INSERT, UPDATE, DELETE)
     fn execute_arrow(
         &self,
         py: Python<'_>,
@@ -82,7 +125,11 @@ impl NativeConnection {
         }
     }
 
-    /// Execute SQL and return results as list of tuples (DB-API style).
+    /// Execute SQL and return results as Python dicts (DB-API style).
+    ///
+    /// Slower than `execute_arrow` — creates Python objects per row.
+    /// Used internally by the DB-API `fetchone()`/`fetchall()` path
+    /// when Arrow is overkill.
     fn execute_rows(&self, py: Python<'_>, sql: &str) -> PyResult<Py<PyAny>> {
         let mut conn = self.inner.lock().unwrap();
         conn.begin_if_needed()?;
@@ -103,7 +150,10 @@ impl NativeConnection {
         Ok(result.into_any().unbind())
     }
 
-    /// Execute simple SQL (DDL, DML) without results
+    /// Execute DDL/DML without returning a result set.
+    ///
+    /// Returns the number of rows affected, or -1 if the statement
+    /// produced a result set (shouldn't happen for DDL).
     fn execute_simple(&self, sql: &str) -> PyResult<i64> {
         let mut conn = self.inner.lock().unwrap();
         conn.begin_if_needed()?;
@@ -117,7 +167,11 @@ impl NativeConnection {
         }
     }
 
-    /// Ingest a PyArrow Table into SQL Server
+    /// Bulk-load a PyArrow Table into SQL Server.
+    ///
+    /// Modes: "create", "append", "replace", "create_append".
+    /// Generates INSERT statements from Arrow arrays — not true TDS
+    /// bulk insert (BCP), but convenient for moderate data sizes.
     fn ingest(&self, table_name: &str, table: &Bound<'_, PyAny>, mode: &str) -> PyResult<i64> {
         let mut conn = self.inner.lock().unwrap();
         conn.begin_if_needed()?;
@@ -128,6 +182,7 @@ impl NativeConnection {
     }
 }
 
+/// Register the native extension module as `pounce._native`.
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<NativeConnection>()?;

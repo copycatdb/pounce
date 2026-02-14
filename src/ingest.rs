@@ -1,11 +1,25 @@
+//! Arrow table ingestion: PyArrow Table → SQL Server.
+//!
+//! Reads column data from a PyArrow Table (via PyO3), generates
+//! `INSERT` statements, and sends them through tabby. Supports
+//! create/append/replace/create_append modes.
+//!
+//! Note: this is INSERT-based, not TDS bulk insert (BCP). Fine for
+//! moderate data sizes; a true bulk path is on the roadmap.
+
 use pyo3::prelude::*;
 
 use crate::connection::SharedClient;
 use crate::errors::to_pyerr;
 use crate::runtime;
 
-/// Ingest a PyArrow Table into SQL Server via bulk insert.
-/// Reads Arrow arrays and sends rows via TDS RowMessage.
+/// Ingest a PyArrow Table into a SQL Server table.
+///
+/// Modes:
+/// - `"create"` — CREATE TABLE + INSERT (fails if table exists)
+/// - `"append"` — INSERT into existing table
+/// - `"replace"` — DROP + CREATE + INSERT
+/// - `"create_append"` — CREATE if not exists, then INSERT
 #[allow(clippy::await_holding_lock)]
 pub fn ingest_arrow_table(
     client: &SharedClient,

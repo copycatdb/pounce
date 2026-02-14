@@ -1,7 +1,14 @@
+//! TDS column → Arrow DataType mapping.
+//!
+//! Maps SQL Server's TDS type system to Apache Arrow data types.
+//! This determines the schema of every Arrow table pounce produces.
+
 use arrow::datatypes::{DataType, Field, TimeUnit};
 use tabby::{Column, DataType as TdsDataType, FixedLenType, VarLenType};
 
-/// Map a TDS Column to an Arrow DataType + nullable
+/// Map a TDS column descriptor to an Arrow DataType + nullable flag.
+///
+/// Called once per column when building the Arrow schema for a result set.
 pub fn column_to_arrow_type(col: &Column) -> (DataType, bool) {
     let nullable = col.nullable().unwrap_or(true);
     let dt = match col.type_info() {
