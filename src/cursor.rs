@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 use pyo3::ffi as pyffi;
-use tiberius::{Row as TibRow, ColumnData, QueryItem};
+use crate::tds_core::{Row as TdsRow, ColumnData, QueryItem};
 use arrow::array::{Array, ArrayBuilder, StructArray};
 use arrow::datatypes::Field;
 use arrow::record_batch::RecordBatch;
@@ -41,7 +41,7 @@ pub fn execute_to_arrow(
         py.allow_threads(|| {
             runtime::block_on(async {
                 let mut c = client.lock().unwrap();
-                let empty_params: &[&dyn tiberius::ToSql] = &[];
+                let empty_params: &[&dyn crate::tds_core::ToSql] = &[];
                 let mut stream = c.query(sql, empty_params).await.map_err(to_pyerr)?;
 
                 let mut fields: Option<Vec<Field>> = None;
@@ -133,7 +133,7 @@ pub fn execute_to_arrow(
 pub fn execute_to_rows(
     client: &SharedClient,
     sql: &str,
-) -> PyResult<(Vec<ColumnInfo>, Vec<TibRow>)> {
+) -> PyResult<(Vec<ColumnInfo>, Vec<TdsRow>)> {
     let client = client.clone();
     let sql = sql.to_string();
 
@@ -141,11 +141,11 @@ pub fn execute_to_rows(
         py.allow_threads(|| {
             runtime::block_on(async {
                 let mut c = client.lock().unwrap();
-                let empty_params: &[&dyn tiberius::ToSql] = &[];
+                let empty_params: &[&dyn crate::tds_core::ToSql] = &[];
                 let mut stream = c.query(sql, empty_params).await.map_err(to_pyerr)?;
 
                 let mut columns: Vec<ColumnInfo> = Vec::new();
-                let mut rows: Vec<TibRow> = Vec::new();
+                let mut rows: Vec<TdsRow> = Vec::new();
 
                 while let Some(item) = stream.try_next().await.map_err(to_pyerr)? {
                     match item {
@@ -217,8 +217,8 @@ pub fn batches_to_pyarrow_table(py: Python<'_>, batches: &[RecordBatch]) -> PyRe
     Ok(result.unbind())
 }
 
-/// Convert a tiberius Row + column info to Python objects for DB-API
-pub fn row_to_py_tuple(py: Python<'_>, row: &TibRow) -> PyResult<PyObject> {
+/// Convert a TDS Row + column info to Python objects for DB-API
+pub fn row_to_py_tuple(py: Python<'_>, row: &TdsRow) -> PyResult<PyObject> {
     let vals: Vec<PyObject> = row.cells().map(|(_col, data)| {
         column_data_to_py(py, data)
     }).collect::<PyResult<Vec<_>>>()?;

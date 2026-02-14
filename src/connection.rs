@@ -1,5 +1,5 @@
 use pyo3::prelude::*;
-use tiberius::{Client, Config, AuthMethod, EncryptionLevel};
+use crate::tds_core::{Client, Config, AuthMethod, EncryptionLevel};
 use tokio::net::TcpStream;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 use std::sync::{Arc, Mutex};

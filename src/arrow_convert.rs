@@ -2,7 +2,7 @@ use arrow::array::*;
 use arrow::datatypes::*;
 use arrow::record_batch::RecordBatch;
 use chrono::NaiveDate;
-use tiberius::ColumnData;
+use crate::tds_core::ColumnData;
 
 /// Append a single ColumnData value to the appropriate Arrow array builder.
 /// The builder type must match the Arrow DataType from types.rs.
@@ -150,7 +150,7 @@ pub fn append_column_data(builder: &mut Box<dyn ArrayBuilder>, data: &ColumnData
     }
 }
 
-fn datetime2_to_micros(dt: &tiberius::time::DateTime2) -> i64 {
+fn datetime2_to_micros(dt: &crate::tds_core::time::DateTime2) -> i64 {
     let base = NaiveDate::from_ymd_opt(1, 1, 1).unwrap();
     let date = base + chrono::Duration::days(dt.date().days() as i64);
     let t = dt.time();

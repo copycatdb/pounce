@@ -6,7 +6,7 @@ use crate::runtime;
 use crate::errors::to_pyerr;
 
 /// Ingest a PyArrow Table into SQL Server via bulk insert.
-/// Reads Arrow arrays and sends rows via tiberius TokenRow.
+/// Reads Arrow arrays and sends rows via TDS TokenRow.
 pub fn ingest_arrow_table(
     client: &SharedClient,
     table_name: &str,
@@ -64,7 +64,7 @@ pub fn ingest_arrow_table(
 
     // Build INSERT statements in batches
     // For simplicity, use parameterized INSERT via simple_query with literal values
-    // A proper implementation would use tiberius BulkLoad, but that requires more complex setup
+    // A proper implementation would use TDS BulkLoad, but that requires more complex setup
     let batches_obj = py_table.call_method0("to_batches")?;
     let batches_list: Vec<Bound<'_, PyAny>> = batches_obj.try_iter()?.collect::<PyResult<Vec<_>>>()?;
 

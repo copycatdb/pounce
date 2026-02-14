@@ -1,7 +1,7 @@
-use tiberius::{Column, TypeInfo, VarLenType, FixedLenType};
+use crate::tds_core::{Column, TypeInfo, VarLenType, FixedLenType};
 use arrow::datatypes::{DataType, Field, TimeUnit};
 
-/// Map a tiberius Column to an Arrow DataType + nullable
+/// Map a TDS Column to an Arrow DataType + nullable
 pub fn column_to_arrow_type(col: &Column) -> (DataType, bool) {
     let nullable = col.nullable().unwrap_or(true);
     let dt = match col.type_info() {
@@ -63,7 +63,7 @@ fn type_info_to_arrow(ti: &TypeInfo) -> DataType {
     }
 }
 
-/// Build an Arrow Field from a tiberius Column
+/// Build an Arrow Field from a TDS Column
 pub fn column_to_field(col: &Column) -> Field {
     let (dt, nullable) = column_to_arrow_type(col);
     Field::new(col.name(), dt, nullable)
