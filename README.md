@@ -101,13 +101,17 @@ Follows the [adbc_driver_postgresql](https://arrow.apache.org/adbc/current/pytho
 
 ## Architecture
 
+Under the hood lives **tabby** 🐱 — our embedded TDS 7.4+ protocol implementation in pure Rust. Tabby speaks fluent SQL Server, handles all the gnarly wire protocol details (authentication, encryption, type encoding, token streams), and does it without a single C dependency. No ODBC. No FreeTDS. Just a cat that really understands packets.
+
+Tabby's job is simple: catch the data coming off the wire and drop it straight into Arrow columnar buffers. Like a cat bringing you mice, except the mice are RecordBatches and they're actually useful.
+
 ```
 ┌─────────────────────────────────┐
 │  Python (DB-API 2.0 / PyArrow)  │
 ├─────────────────────────────────┤
 │  PyO3 native extension (Rust)   │
 ├─────────────────────────────────┤
-│  TDS 7.4 protocol (embedded)    │  ← no ODBC, no libpq, pure Rust
+│  tabby 🐱 (TDS 7.4+ protocol)  │  ← pure Rust, no ODBC
 ├─────────────────────────────────┤
 │  arrow-rs (Array Builders)      │  ← rows → columns in Rust
 ├─────────────────────────────────┤
@@ -116,7 +120,7 @@ Follows the [adbc_driver_postgresql](https://arrow.apache.org/adbc/current/pytho
 ```
 
 Key design decisions:
-- **No ODBC dependency** — uses an embedded pure-Rust TDS 7.4 protocol implementation
+- **No ODBC dependency** — tabby handles TDS natively in pure Rust
 - **No Python in the data path** — row decoding + columnar conversion happens entirely in Rust
 - **Arrow FFI** — RecordBatches cross the Rust→Python boundary without serialization
 - **Configurable batch size** — accumulate N rows per Arrow batch (default 65536)
