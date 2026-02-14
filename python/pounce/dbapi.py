@@ -151,6 +151,214 @@ class Connection:
             self._native.close()
             self._closed = True
 
+    # -- Private helpers ---------------------------------------------------
+
+    def _execute_scalar(self, sql):
+        """Run a query and return the first column of the first row."""
+        cur = self.cursor()
+        cur.execute(sql)
+        row = cur.fetchone()
+        cur.close()
+        return row[0] if row else None
+
+    def _execute_rows(self, sql):
+        """Run a query and return all rows."""
+        cur = self.cursor()
+        cur.execute(sql)
+        rows = cur.fetchall()
+        cur.close()
+        return rows
+
+    # -- ADBC metadata methods ---------------------------------------------
+
+    @property
+    def adbc_current_catalog(self) -> str:
+        """Return the current database (catalog) name.
+
+        Returns
+        -------
+        str
+            The name of the current database.
+        """
+        return self._execute_scalar("SELECT DB_NAME()")
+
+    @property
+    def adbc_current_db_schema(self) -> str:
+        """Return the current default schema name.
+
+        Returns
+        -------
+        str
+            The name of the current schema.
+        """
+        return self._execute_scalar("SELECT SCHEMA_NAME()")
+
+    def adbc_get_info(self) -> dict:
+        """Return driver and server metadata.
+
+        Returns
+        -------
+        dict
+            Keys include ``driver_name``, ``driver_version``,
+            ``vendor_name``, and ``vendor_version``.
+        """
+        version = self._execute_scalar("SELECT @@VERSION")
+        return {
+            "driver_name": "pounce",
+            "driver_version": "0.1.0",
+            "vendor_name": "CopyCat",
+            "vendor_version": version or "SQL Server",
+        }
+
+    def adbc_get_table_types(self) -> list:
+        """Return the list of supported table types.
+
+        Returns
+        -------
+        list of str
+            e.g. ``["BASE TABLE", "VIEW"]``.
+        """
+        rows = self._execute_rows(
+            "SELECT DISTINCT TABLE_TYPE FROM INFORMATION_SCHEMA.TABLES ORDER BY TABLE_TYPE"
+        )
+        return [r[0] for r in rows] if rows else ["BASE TABLE", "VIEW"]
+
+    def adbc_get_table_schema(self, catalog=None, db_schema=None, table_name=None):
+        """Return the Arrow schema of an existing table.
+
+        Parameters
+        ----------
+        catalog : str, optional
+            Database name. Uses current database if ``None``.
+        db_schema : str, optional
+            Schema name. Uses ``dbo`` if ``None``.
+        table_name : str
+            Table name.
+
+        Returns
+        -------
+        pyarrow.Schema
+        """
+        conditions = ["TABLE_NAME = N'{}'".format(table_name.replace("'", "''"))]
+        if catalog:
+            conditions.append("TABLE_CATALOG = N'{}'".format(catalog.replace("'", "''")))
+        if db_schema:
+            conditions.append("TABLE_SCHEMA = N'{}'".format(db_schema.replace("'", "''")))
+        where = " AND ".join(conditions)
+        sql = (
+            "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, "
+            "NUMERIC_PRECISION, NUMERIC_SCALE, CHARACTER_MAXIMUM_LENGTH "
+            "FROM INFORMATION_SCHEMA.COLUMNS "
+            f"WHERE {where} ORDER BY ORDINAL_POSITION"
+        )
+        rows = self._execute_rows(sql)
+        fields = []
+        for name, dtype, nullable, prec, scale, _char_len in rows:
+            arrow_type = _sql_type_to_arrow(dtype, prec, scale)
+            fields.append(pa.field(name, arrow_type, nullable=(nullable == "YES")))
+        return pa.schema(fields)
+
+    def adbc_get_objects(self, depth="all", catalog_filter=None,
+                         schema_filter=None, table_filter=None,
+                         table_types=None):
+        """Browse database objects hierarchically.
+
+        Parameters
+        ----------
+        depth : str
+            One of ``"catalogs"``, ``"db_schemas"``, ``"tables"``, ``"all"``.
+        catalog_filter : str, optional
+            SQL LIKE pattern for catalog names.
+        schema_filter : str, optional
+            SQL LIKE pattern for schema names.
+        table_filter : str, optional
+            SQL LIKE pattern for table names.
+        table_types : list of str, optional
+            Filter by table types.
+
+        Returns
+        -------
+        list of dict
+            Hierarchical catalog/schema/table/column structure.
+        """
+        cat = self.adbc_current_catalog
+
+        if depth == "catalogs":
+            return [{"catalog_name": cat}]
+
+        # Get schemas
+        sql = "SELECT DISTINCT TABLE_SCHEMA FROM INFORMATION_SCHEMA.TABLES"
+        conds = []
+        if schema_filter:
+            conds.append(f"TABLE_SCHEMA LIKE N'{schema_filter}'")
+        if conds:
+            sql += " WHERE " + " AND ".join(conds)
+        schemas = [r[0] for r in self._execute_rows(sql)]
+
+        if depth == "db_schemas":
+            return [{"catalog_name": cat,
+                      "catalog_db_schemas": [{"db_schema_name": s} for s in schemas]}]
+
+        # Get tables
+        sql = ("SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE "
+               "FROM INFORMATION_SCHEMA.TABLES")
+        conds = []
+        if schema_filter:
+            conds.append(f"TABLE_SCHEMA LIKE N'{schema_filter}'")
+        if table_filter:
+            conds.append(f"TABLE_NAME LIKE N'{table_filter}'")
+        if table_types:
+            types_str = ",".join(f"N'{t}'" for t in table_types)
+            conds.append(f"TABLE_TYPE IN ({types_str})")
+        if conds:
+            sql += " WHERE " + " AND ".join(conds)
+        table_rows = self._execute_rows(sql)
+
+        # Group by schema
+        schema_tables = {}
+        for sch, tbl, ttype in table_rows:
+            schema_tables.setdefault(sch, []).append({
+                "table_name": tbl, "table_type": ttype})
+
+        if depth == "tables":
+            return [{"catalog_name": cat,
+                      "catalog_db_schemas": [
+                          {"db_schema_name": s,
+                           "db_schema_tables": schema_tables.get(s, [])}
+                          for s in schemas]}]
+
+        # depth == "all" — add columns
+        col_sql = ("SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, "
+                   "ORDINAL_POSITION, DATA_TYPE, IS_NULLABLE "
+                   "FROM INFORMATION_SCHEMA.COLUMNS")
+        col_conds = []
+        if schema_filter:
+            col_conds.append(f"TABLE_SCHEMA LIKE N'{schema_filter}'")
+        if table_filter:
+            col_conds.append(f"TABLE_NAME LIKE N'{table_filter}'")
+        if col_conds:
+            col_sql += " WHERE " + " AND ".join(col_conds)
+        col_sql += " ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION"
+        col_rows = self._execute_rows(col_sql)
+
+        # Group columns by (schema, table)
+        table_cols = {}
+        for sch, tbl, col, pos, dtype, nullable in col_rows:
+            table_cols.setdefault((sch, tbl), []).append({
+                "column_name": col, "ordinal_position": pos,
+                "data_type": dtype, "is_nullable": nullable == "YES"})
+
+        # Attach columns to tables
+        for sch, tables in schema_tables.items():
+            for t in tables:
+                t["table_columns"] = table_cols.get((sch, t["table_name"]), [])
+
+        return [{"catalog_name": cat,
+                  "catalog_db_schemas": [
+                      {"db_schema_name": s,
+                       "db_schema_tables": schema_tables.get(s, [])}
+                      for s in schemas]}]
+
     # -- Context manager ---------------------------------------------------
 
     def __enter__(self):
@@ -291,6 +499,8 @@ class Cursor:
         For DML (INSERT/UPDATE/DELETE), check ``rowcount`` instead.
         """
         self._check_closed()
+        if operation is None and hasattr(self, '_prepared_query'):
+            operation = self._prepared_query
         sql = self._substitute_params(operation, parameters)
         result = self._conn._native.execute_arrow(sql, self._batch_size)
 
@@ -424,6 +634,72 @@ class Cursor:
 
     # -- Ingest (Arrow → SQL Server) ---------------------------------------
 
+    # -- ADBC cursor methods -----------------------------------------------
+
+    def adbc_execute_schema(self, query: str):
+        """Get the result schema of a query without executing it.
+
+        Parameters
+        ----------
+        query : str
+            SQL query to describe.
+
+        Returns
+        -------
+        pyarrow.Schema
+        """
+        self._check_closed()
+        sql = (
+            "SELECT name, system_type_name, is_nullable "
+            "FROM sys.dm_exec_describe_first_result_set(N'"
+            + query.replace("'", "''")
+            + "', NULL, 0) ORDER BY column_ordinal"
+        )
+        self._conn._native.execute_arrow(sql, self._batch_size)
+        # Re-use execute path
+        cur = self._conn.cursor()
+        cur.execute(sql)
+        rows = cur.fetchall()
+        cur.close()
+        fields = []
+        for name, type_name, nullable in rows:
+            # type_name is like "int", "nvarchar(100)", "decimal(18,4)"
+            base = type_name.split("(")[0].strip().lower()
+            prec, scale = None, None
+            if "(" in type_name:
+                inner = type_name.split("(")[1].rstrip(")")
+                parts = inner.split(",")
+                try:
+                    prec = int(parts[0].strip())
+                    if len(parts) > 1:
+                        scale = int(parts[1].strip())
+                except ValueError:
+                    pass
+            arrow_type = _sql_type_to_arrow(base, prec, scale)
+            fields.append(pa.field(name, arrow_type, nullable=bool(nullable)))
+        return pa.schema(fields)
+
+    def adbc_prepare(self, query: str):
+        """Prepare a statement for repeated execution.
+
+        Parameters
+        ----------
+        query : str
+            SQL query with ``?`` parameter placeholders.
+        """
+        self._check_closed()
+        self._prepared_query = query
+
+    def adbc_cancel(self):
+        """Cancel the currently running query.
+
+        Raises
+        ------
+        NotImplementedError
+            Query cancellation is not yet supported.
+        """
+        raise NotImplementedError("Query cancellation not yet supported")
+
     def adbc_ingest(self, table_name: str, data, mode: str = "create", **kwargs):
         """Bulk-load a PyArrow Table into SQL Server.
 
@@ -447,6 +723,9 @@ class Cursor:
         self._check_closed()
         if not isinstance(data, pa.Table):
             raise TypeError(f"Expected pyarrow.Table, got {type(data)}")
+        db_schema_name = kwargs.get("db_schema_name")
+        if db_schema_name:
+            table_name = f"{db_schema_name}.{table_name}"
         self._rowcount = self._conn._native.ingest(table_name, data, mode)
 
     # -- DB-API no-ops -----------------------------------------------------
@@ -482,3 +761,59 @@ class Cursor:
 def _min(a, b):
     """Built-in min is shadowed by the module namespace — use this instead."""
     return a if a < b else b
+
+
+def _sql_type_to_arrow(dtype, precision=None, scale=None):
+    """Map a SQL Server data type name to an Arrow type.
+
+    Parameters
+    ----------
+    dtype : str
+        SQL Server data type name (lower-cased).
+    precision : int, optional
+        Numeric precision.
+    scale : int, optional
+        Numeric scale.
+
+    Returns
+    -------
+    pyarrow.DataType
+    """
+    dtype = dtype.lower().strip()
+    mapping = {
+        "int": pa.int32(),
+        "bigint": pa.int64(),
+        "smallint": pa.int16(),
+        "tinyint": pa.uint8(),
+        "float": pa.float64(),
+        "real": pa.float32(),
+        "bit": pa.bool_(),
+        "date": pa.date32(),
+        "datetime": pa.timestamp("us"),
+        "datetime2": pa.timestamp("us"),
+        "smalldatetime": pa.timestamp("us"),
+        "time": pa.time64("us"),
+        "datetimeoffset": pa.timestamp("us", tz="UTC"),
+        "varchar": pa.utf8(),
+        "nvarchar": pa.utf8(),
+        "char": pa.utf8(),
+        "nchar": pa.utf8(),
+        "text": pa.utf8(),
+        "ntext": pa.utf8(),
+        "xml": pa.utf8(),
+        "uniqueidentifier": pa.utf8(),
+        "binary": pa.binary(),
+        "varbinary": pa.binary(),
+        "image": pa.binary(),
+    }
+    if dtype in mapping:
+        return mapping[dtype]
+    if dtype in ("decimal", "numeric"):
+        p = precision if precision else 18
+        s = scale if scale else 0
+        return pa.decimal128(p, s)
+    if dtype in ("money",):
+        return pa.decimal128(19, 4)
+    if dtype in ("smallmoney",):
+        return pa.decimal128(10, 4)
+    return pa.utf8()
