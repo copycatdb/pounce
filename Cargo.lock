@@ -1492,7 +1492,7 @@ dependencies = [
 [[package]]
 name = "tabby"
 version = "0.1.0"
-source = "git+https://github.com/copycatdb/tabby.git?branch=main#6aec99d1b1fc804c09c934364fc016b6836d82a9"
+source = "git+https://github.com/copycatdb/tabby.git?branch=main#57860aeb2ca6abb0f06b459c704430e85c0e7044"
 dependencies = [
  "async-trait",
  "asynchronous-codec",
