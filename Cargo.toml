@@ -1,0 +1,22 @@
+[package]
+name = "adbc_driver_mssql"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "adbc_driver_mssql"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.23", features = ["extension-module"] }
+tiberius = { path = "../tiberius", default-features = false, features = ["tds73", "chrono", "rust_decimal", "rustls"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "sync"] }
+tokio-util = { version = "0.7", features = ["compat"] }
+tokio-rustls = "0.26"
+rustls = "0.23"
+once_cell = "1"
+arrow = { version = "55", features = ["ffi"] }
+chrono = "0.4"
+uuid = "1"
+futures-util = "0.3"
+rust_decimal = "1"
