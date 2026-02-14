@@ -19,6 +19,7 @@ use pyo3::prelude::*;
 use std::sync::{Arc, Mutex};
 
 mod arrow_convert;
+mod arrow_writer;
 mod connection;
 mod cursor;
 mod errors;
@@ -114,6 +115,34 @@ impl NativeConnection {
         drop(conn);
 
         let result = cursor::execute_to_arrow(&client, sql, bs)?;
+
+        match result {
+            cursor::ExecResult::Query { batches, .. } => {
+                cursor::batches_to_pyarrow_table(py, &batches)
+            }
+            cursor::ExecResult::Dml { rowcount } => {
+                Ok(rowcount.into_pyobject(py)?.into_any().unbind())
+            }
+        }
+    }
+
+    /// Execute SQL via the direct RowWriter path (TDS → Arrow, no SqlValue intermediary).
+    ///
+    /// Functionally identical to `execute_arrow`, but uses the `RowWriter`
+    /// trait to skip the `SqlValue` enum dispatch on the consumer side.
+    fn execute_arrow_direct(
+        &self,
+        py: Python<'_>,
+        sql: &str,
+        batch_size: Option<usize>,
+    ) -> PyResult<Py<PyAny>> {
+        let bs = batch_size.unwrap_or(65536);
+        let mut conn = self.inner.lock().unwrap();
+        conn.begin_if_needed()?;
+        let client = conn.get_client()?;
+        drop(conn);
+
+        let result = cursor::execute_to_arrow_direct(&client, sql, bs)?;
 
         match result {
             cursor::ExecResult::Query { batches, .. } => {

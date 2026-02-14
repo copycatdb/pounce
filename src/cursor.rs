@@ -16,6 +16,7 @@ use pyo3::prelude::*;
 use tabby::{ResultItem, Row as TdsRow, SqlValue};
 
 use crate::arrow_convert::{append_column_data, finish_builders, make_builder};
+use crate::arrow_writer::ArrowRowWriter;
 use crate::connection::SharedClient;
 use crate::errors::to_pyerr;
 use crate::runtime;
@@ -188,6 +189,95 @@ pub fn execute_to_rows(
                 drop(stream);
                 drop(c);
                 Ok((columns, rows))
+            })
+        })
+    })
+}
+
+/// Execute SQL using the true zero-copy path: TDS wire → RowWriter directly,
+/// bypassing SqlValue allocation entirely.
+///
+/// Uses `Client::query_direct` which decodes TDS columns directly into
+/// the ArrowRowWriter during wire parsing.
+#[allow(clippy::await_holding_lock)]
+pub fn execute_to_arrow_direct(
+    client: &SharedClient,
+    sql: &str,
+    batch_size: usize,
+) -> PyResult<ExecResult> {
+    let client = client.clone();
+    let sql = sql.to_string();
+
+    Python::attach(|py| {
+        py.detach(|| {
+            runtime::block_on(async {
+                let mut c = client.lock().unwrap();
+                let empty_params: &[&dyn tabby::IntoSql] = &[];
+                let intermediate_batches: std::cell::RefCell<Vec<RecordBatch>> =
+                    std::cell::RefCell::new(Vec::new());
+                let mut fields_out: Option<Vec<Field>> = None;
+                let batch_size_copy = batch_size;
+
+                let writer_opt: Option<ArrowRowWriter> = (&mut *c)
+                    .query_direct(
+                        sql,
+                        empty_params,
+                        |columns| {
+                            let w = ArrowRowWriter::from_columns(columns, batch_size_copy);
+                            fields_out = Some(w.fields().to_vec());
+                            w
+                        },
+                        |w: &mut ArrowRowWriter| {
+                            w.finish_row();
+                            if w.row_count() >= batch_size_copy {
+                                if let Ok(batch) = w.flush(batch_size_copy) {
+                                    intermediate_batches.borrow_mut().push(batch);
+                                }
+                            }
+                            true
+                        },
+                    )
+                    .await
+                    .map_err(to_pyerr)?;
+
+                let mut batches = intermediate_batches.into_inner();
+
+                // Flush final batch
+                if let Some(mut w) = writer_opt {
+                    if w.row_count() > 0 {
+                        let batch = w.finish_batch().map_err(|e| {
+                            pyo3::exceptions::PyRuntimeError::new_err(e.to_string())
+                        })?;
+                        batches.push(batch);
+                    }
+                }
+
+                drop(c);
+
+                match fields_out {
+                    Some(flds) => Ok(ExecResult::Query {
+                        fields: flds,
+                        batches,
+                    }),
+                    None => {
+                        let mut c2 = client.lock().unwrap();
+                        let mut s2 = c2
+                            .execute("SELECT @@ROWCOUNT", empty_params)
+                            .await
+                            .map_err(to_pyerr)?;
+                        let mut rc: i64 = 0;
+                        while let Some(item) = s2.try_next().await.map_err(to_pyerr)? {
+                            if let ResultItem::Row(row) = item
+                                && let Some(v) = row.try_get::<i32, _>(0).map_err(to_pyerr)?
+                            {
+                                rc = v as i64;
+                            }
+                        }
+                        drop(s2);
+                        drop(c2);
+                        Ok(ExecResult::Dml { rowcount: rc })
+                    }
+                }
             })
         })
     })
