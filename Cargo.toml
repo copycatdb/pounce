@@ -17,7 +17,7 @@ chrono = ["tabby/chrono"]
 rust_decimal = ["tabby/rust_decimal"]
 
 [dependencies]
-tabby = { git = "https://github.com/copycatdb/tabby.git", branch = "feat/initial-implementation" }
+tabby = { git = "https://github.com/copycatdb/tabby.git", branch = "main" }
 pyo3 = { version = "0.28", features = ["extension-module"] }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "sync", "macros"] }
 tokio-util = { version = "0.7", features = ["compat"] }
