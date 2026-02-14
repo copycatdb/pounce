@@ -1,12 +1,12 @@
 use pyo3::prelude::*;
-use std::sync::Arc;
 
 use crate::connection::SharedClient;
-use crate::runtime;
 use crate::errors::to_pyerr;
+use crate::runtime;
 
 /// Ingest a PyArrow Table into SQL Server via bulk insert.
-/// Reads Arrow arrays and sends rows via TDS TokenRow.
+/// Reads Arrow arrays and sends rows via TDS RowMessage.
+#[allow(clippy::await_holding_lock)]
 pub fn ingest_arrow_table(
     client: &SharedClient,
     table_name: &str,
@@ -37,7 +37,10 @@ pub fn ingest_arrow_table(
     let client_ref = client.clone();
     match mode {
         "replace" => {
-            let drop_sql = format!("IF OBJECT_ID(N'{}', 'U') IS NOT NULL DROP TABLE {}", table_name, table_name);
+            let drop_sql = format!(
+                "IF OBJECT_ID(N'{}', 'U') IS NOT NULL DROP TABLE {}",
+                table_name, table_name
+            );
             exec_simple_internal(&client_ref, &drop_sql)?;
             let create_sql = build_create_table_sql(table_name, &col_names, &col_sql_types);
             exec_simple_internal(&client_ref, &create_sql)?;
@@ -55,7 +58,12 @@ pub fn ingest_arrow_table(
             exec_simple_internal(&client_ref, &create_sql)?;
         }
         "append" => {} // table must exist
-        _ => return Err(pyo3::exceptions::PyValueError::new_err(format!("Unknown ingest mode: {}", mode))),
+        _ => {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "Unknown ingest mode: {}",
+                mode
+            )));
+        }
     }
 
     if num_rows == 0 {
@@ -63,10 +71,11 @@ pub fn ingest_arrow_table(
     }
 
     // Build INSERT statements in batches
-    // For simplicity, use parameterized INSERT via simple_query with literal values
+    // For simplicity, use parameterized INSERT via execute_raw with literal values
     // A proper implementation would use TDS BulkLoad, but that requires more complex setup
     let batches_obj = py_table.call_method0("to_batches")?;
-    let batches_list: Vec<Bound<'_, PyAny>> = batches_obj.try_iter()?.collect::<PyResult<Vec<_>>>()?;
+    let batches_list: Vec<Bound<'_, PyAny>> =
+        batches_obj.try_iter()?.collect::<PyResult<Vec<_>>>()?;
 
     let mut total_rows: i64 = 0;
 
@@ -80,16 +89,29 @@ pub fn ingest_arrow_table(
         let chunk_size = 1000;
         for chunk_start in (0..batch_rows).step_by(chunk_size) {
             let chunk_end = std::cmp::min(chunk_start + chunk_size, batch_rows);
-            let mut sql = format!("INSERT INTO {} ({}) VALUES ", table_name,
-                col_names.iter().map(|n| format!("[{}]", n)).collect::<Vec<_>>().join(", "));
+            let mut sql = format!(
+                "INSERT INTO {} ({}) VALUES ",
+                table_name,
+                col_names
+                    .iter()
+                    .map(|n| format!("[{}]", n))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
 
             for row_idx in chunk_start..chunk_end {
-                if row_idx > chunk_start { sql.push_str(", "); }
+                if row_idx > chunk_start {
+                    sql.push_str(", ");
+                }
                 sql.push('(');
                 for (col_idx, col_array) in columns.iter().enumerate() {
-                    if col_idx > 0 { sql.push_str(", "); }
-                    let is_null: bool = col_array.get_item(row_idx)?
-                        .call_method0("as_py")?.is_none();
+                    if col_idx > 0 {
+                        sql.push_str(", ");
+                    }
+                    let is_null: bool = col_array
+                        .get_item(row_idx)?
+                        .call_method0("as_py")?
+                        .is_none();
                     if is_null {
                         sql.push_str("NULL");
                     } else {
@@ -110,15 +132,20 @@ pub fn ingest_arrow_table(
     Ok(total_rows)
 }
 
+#[allow(clippy::await_holding_lock)]
 fn exec_simple_internal(client: &SharedClient, sql: &str) -> PyResult<()> {
     let client = client.clone();
     let sql = sql.to_string();
-    Python::with_gil(|py| {
-        py.allow_threads(|| {
+    Python::attach(|py| {
+        py.detach(|| {
             runtime::block_on(async {
                 let mut c = client.lock().unwrap();
-                c.simple_query(sql).await.map_err(to_pyerr)?
-                    .into_results().await.map_err(to_pyerr)?;
+                c.execute_raw(sql)
+                    .await
+                    .map_err(to_pyerr)?
+                    .into_results()
+                    .await
+                    .map_err(to_pyerr)?;
                 Ok(())
             })
         })
@@ -126,7 +153,9 @@ fn exec_simple_internal(client: &SharedClient, sql: &str) -> PyResult<()> {
 }
 
 fn build_create_table_sql(table_name: &str, col_names: &[String], col_types: &[String]) -> String {
-    let cols: Vec<String> = col_names.iter().zip(col_types.iter())
+    let cols: Vec<String> = col_names
+        .iter()
+        .zip(col_types.iter())
         .map(|(n, t)| format!("[{}] {}", n, t))
         .collect();
     format!("CREATE TABLE {} ({})", table_name, cols.join(", "))

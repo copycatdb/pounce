@@ -1,16 +1,15 @@
+#![allow(unexpected_cfgs)]
+
 use pyo3::prelude::*;
 use std::sync::{Arc, Mutex};
 
-#[macro_use]
-mod tabby;
-
-mod runtime;
+mod arrow_convert;
 mod connection;
 mod cursor;
-mod arrow_convert;
-mod types;
 mod errors;
 mod ingest;
+mod runtime;
+mod types;
 
 use connection::TdsConnection;
 
@@ -24,7 +23,9 @@ impl NativeConnection {
     #[new]
     fn new(connection_str: &str) -> PyResult<Self> {
         let conn = TdsConnection::new(connection_str)?;
-        Ok(NativeConnection { inner: Arc::new(Mutex::new(conn)) })
+        Ok(NativeConnection {
+            inner: Arc::new(Mutex::new(conn)),
+        })
     }
 
     fn close(&self) -> PyResult<()> {
@@ -57,7 +58,12 @@ impl NativeConnection {
 
     /// Execute SQL and return results as Arrow RecordBatches (zero-copy via FFI).
     /// Returns a list of PyArrow RecordBatch objects.
-    fn execute_arrow(&self, py: Python<'_>, sql: &str, batch_size: Option<usize>) -> PyResult<PyObject> {
+    fn execute_arrow(
+        &self,
+        py: Python<'_>,
+        sql: &str,
+        batch_size: Option<usize>,
+    ) -> PyResult<Py<PyAny>> {
         let bs = batch_size.unwrap_or(65536);
         let mut conn = self.inner.lock().unwrap();
         conn.begin_if_needed()?;
@@ -77,7 +83,7 @@ impl NativeConnection {
     }
 
     /// Execute SQL and return results as list of tuples (DB-API style).
-    fn execute_rows(&self, py: Python<'_>, sql: &str) -> PyResult<PyObject> {
+    fn execute_rows(&self, py: Python<'_>, sql: &str) -> PyResult<Py<PyAny>> {
         let mut conn = self.inner.lock().unwrap();
         conn.begin_if_needed()?;
         let client = conn.get_client()?;
@@ -86,7 +92,8 @@ impl NativeConnection {
         let (columns, rows) = cursor::execute_to_rows(&client, sql)?;
 
         let col_names: Vec<String> = columns.iter().map(|c| c.name.clone()).collect();
-        let py_rows: Vec<PyObject> = rows.iter()
+        let py_rows: Vec<Py<PyAny>> = rows
+            .iter()
             .map(|r| cursor::row_to_py_tuple(py, r))
             .collect::<PyResult<Vec<_>>>()?;
 

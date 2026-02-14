@@ -1,0 +1,4 @@
+pounce — Arrow-native ADBC driver for SQL Server
+Copyright 2025 The CopyCat Authors
+
+This project uses tabby (https://github.com/copycatdb/tabby) for TDS protocol support.
