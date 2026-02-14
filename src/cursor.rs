@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 use pyo3::ffi as pyffi;
-use crate::tds_core::{Row as TdsRow, ColumnData, QueryItem};
+use crate::tabby::{Row as TdsRow, ColumnData, QueryItem};
 use arrow::array::{Array, ArrayBuilder, StructArray};
 use arrow::datatypes::Field;
 use arrow::record_batch::RecordBatch;
@@ -41,7 +41,7 @@ pub fn execute_to_arrow(
         py.allow_threads(|| {
             runtime::block_on(async {
                 let mut c = client.lock().unwrap();
-                let empty_params: &[&dyn crate::tds_core::ToSql] = &[];
+                let empty_params: &[&dyn crate::tabby::ToSql] = &[];
                 let mut stream = c.query(sql, empty_params).await.map_err(to_pyerr)?;
 
                 let mut fields: Option<Vec<Field>> = None;
@@ -141,7 +141,7 @@ pub fn execute_to_rows(
         py.allow_threads(|| {
             runtime::block_on(async {
                 let mut c = client.lock().unwrap();
-                let empty_params: &[&dyn crate::tds_core::ToSql] = &[];
+                let empty_params: &[&dyn crate::tabby::ToSql] = &[];
                 let mut stream = c.query(sql, empty_params).await.map_err(to_pyerr)?;
 
                 let mut columns: Vec<ColumnInfo> = Vec::new();

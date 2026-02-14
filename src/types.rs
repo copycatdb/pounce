@@ -1,4 +1,4 @@
-use crate::tds_core::{Column, TypeInfo, VarLenType, FixedLenType};
+use crate::tabby::{Column, TypeInfo, VarLenType, FixedLenType};
 use arrow::datatypes::{DataType, Field, TimeUnit};
 
 /// Map a TDS Column to an Arrow DataType + nullable

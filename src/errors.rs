@@ -1,5 +1,5 @@
 use pyo3::prelude::*;
-use crate::tds_core::error::Error as TdsError;
+use crate::tabby::error::Error as TdsError;
 
 pub fn to_pyerr(e: TdsError) -> PyErr {
     let msg = format!("{}", e);

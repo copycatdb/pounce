@@ -2,7 +2,7 @@ use pyo3::prelude::*;
 use std::sync::{Arc, Mutex};
 
 #[macro_use]
-mod tds_core;
+mod tabby;
 
 mod runtime;
 mod connection;
