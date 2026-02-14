@@ -563,10 +563,13 @@ class Cursor:
     # -- DB-API fetch methods ----------------------------------------------
 
     def fetchone(self):
-        """Fetch the next row, or ``None`` if exhausted."""
+        """Fetch the next row, or ``None`` if exhausted.
+
+        Returns ``None`` after DML/DDL statements (no result set).
+        """
         self._check_closed()
         if self._result is None:
-            raise ProgrammingError("No result set")
+            return None
         self._ensure_rows()
         if self._row_index >= len(self._rows):
             return None
