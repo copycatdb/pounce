@@ -2,19 +2,35 @@
 
 Zero-copy Arrow transport over TDS. No ODBC. No driver manager.
 
-    from pounce import dbapi
+    import pounce
 
-    conn = dbapi.connect("Server=localhost,1433;UID=sa;PWD=secret")
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM my_table")
+    # DB-API
+    conn = pounce.connect("Server=localhost,1433;UID=sa;PWD=secret")
 
-    table = cur.fetch_arrow_table()    # zero-copy Arrow
-    rows = cur.fetchall()              # classic DB-API tuples
+    # Pandas
+    df = pounce.read_sql("SELECT * FROM t", conn=conn)
+    pounce.to_sql(df, "t2", conn=conn, if_exists="replace")
+
+    # Polars
+    df = pounce.read_polars("SELECT * FROM t", conn=conn)
+    pounce.polars_to_sql(df, "t2", conn=conn)
+
+    # Ingest
+    pounce.ingest_csv("data.csv", "t", conn=conn)
+    pounce.export_parquet("SELECT * FROM t", "out.parquet", conn=conn)
 
 Part of the CopyCat ecosystem: https://github.com/copycatdb
 """
 
 from pounce.dbapi import connect, Connection, Cursor
+from pounce.pandas_support import read_sql, to_sql
+from pounce.polars_support import read_polars, polars_to_sql
+from pounce.ingest import ingest_csv, ingest_parquet, export_csv, export_parquet
 
 __version__ = "0.1.0"
-__all__ = ["connect", "Connection", "Cursor"]
+__all__ = [
+    "connect", "Connection", "Cursor",
+    "read_sql", "to_sql",
+    "read_polars", "polars_to_sql",
+    "ingest_csv", "ingest_parquet", "export_csv", "export_parquet",
+]
